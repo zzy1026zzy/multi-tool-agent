@@ -64,3 +64,76 @@ _save() 直接覆盖⽂件，会把别的 user 的数据冲掉。正确做法是
 
 把记忆按 session_id 存，换个窗⼝就忘了，跨会话的效果也没了。它要按全局 USER_ID 存。
 同⼀条事实反复存进去，记得去重。
+
+### 任务 3· RAG检索生成
+
+#### 是什么
+
+大模型只会**续写文字**。它没学过的东西——你的私有文档、公司内部资料、训练截止之后的新知识——硬问它，它只会一本正经地编（这就是幻觉）。
+
+RAG（检索增强生成）就是来补这个缺口的：先准备一个可检索的资料库，每次用户提问时，先从库里把最相关的几段查出来、塞进上下文，再让模型照着这些资料回答。这样模型就从「凭记忆瞎猜」变成「照着手头资料说话」，答得准，也能交代出处。
+
+#### 流程
+RAG 大概是这个流程：
+
+文档文件
+  ↓
+chunk_text() 切成小块
+  ↓
+_llm.embed(chunks) 把每个小块转成向量
+  ↓
+STORE.add(chunks, embeddings, metadatas) 入库
+  ↓
+用户提问时，STORE.search() 找最相似的块
+  ↓
+把命中的文本块交给大模型回答
+
+#### 几个属性分别是什么
+
+1、self.texts: list[str] 存的是原始文本块。
+
+比如 data/docs/知简-价格与套餐.md 被切成了几段，其中一段可能是：
+
+专业版价格为 ¥18/月，或 ¥168/年。，这个字符串就会被放进 self.texts。
+
+它的作用是：搜索命中后，真正返回给大模型看的资料内容。
+
+2、self.embeddings: list[list[float]]
+存的是每个文本块对应的向量。
+
+比如上面那段文字经过 embedding 模型后，可能变成：
+
+[0.012, -0.31, 0.88, ...]，实际维度可能是几百或几千维。
+
+它的作用是：用来计算“用户问题”和“文档块”语义上有多像。
+问题也会被转成一个向量。然后系统拿“问题向量”和库里每个“文档块向量”算相似度，找出最相关的几段。
+
+3、self.metadatas: list[dict]
+存的是每个文本块的附加信息，通常是来源。
+
+比如：
+
+{"doc": "data/docs/知简-价格与套餐.md"}
+它的作用是：告诉你这个命中的文本来自哪个文件。
+
+后面 knowledge_base.py 里会用它生成引用来源：
+
+{"doc": h["metadata"].get("doc"), "score": h["score"], "snippet": h["text"][:50]}
+前端右侧仪表栏显示“引用来源”，靠的就是这个 metadata。
+
+#### 遇到问题
+
+这个报错的核心原因是：
+
+你用 DeepSeek 的 base_url 去请求 OpenAI 的 embedding 模型 text-embedding-3-small
+现在 .env 里是：
+
+OPENAI_BASE_URL=https://api.deepseek.com/v1
+CHAT_MODEL=deepseek-v4-flash
+EMBEDDING_MODEL=text-embedding-3-small
+text-embedding-3-small 是 OpenAI 的 embedding 模型名，但请求发到了：
+
+https://api.deepseek.com/v1/embeddings
+DeepSeek 那边找不到这个模型或这个接口，所以返回：
+
+openai.NotFoundError: Error code: 404
