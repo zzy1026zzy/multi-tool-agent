@@ -137,3 +137,6 @@ https://api.deepseek.com/v1/embeddings
 DeepSeek 那边找不到这个模型或这个接口，所以返回：
 
 openai.NotFoundError: Error code: 404
+
+修复：1、使用阿里云的EMBEDDING_MODEL=text-embedding-v3模型
+2、修复了not chunk.choices情况下空指针的问题
