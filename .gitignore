@@ -1,5 +1,6 @@
 # Claude Code local config / skills (not part of the project)
 .claude/
+share/
 
 # Python
 __pycache__/
